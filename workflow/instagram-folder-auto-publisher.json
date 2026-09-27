@@ -1,0 +1,959 @@
+{
+  "name": "Instagram Folder Auto-Publisher",
+  "nodes": [
+    {
+      "name": "READ ME",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -300
+      ],
+      "parameters": {
+        "width": 560,
+        "height": 460,
+        "color": 4,
+        "content": "## Instagram Folder Auto-Publisher\nCopy .mp4 / .mov / .jpg files into your configured root folder (e.g. **C:\\Instagram-Automation**). Each run:\n1. creates **QUEUE** and **PUBLISHED** if missing\n2. moves finished copies from the root folder into QUEUE\n3. picks ONE file from QUEUE and writes a Gemini caption\n4. publishes it (Instagram requires a public link for both videos and photos, so each file goes to a short-lived temporary public link first)\n5. only after Instagram returns a media id, moves the file to **PUBLISHED**\n\nA failed file stays in QUEUE and goes to the back of the line, so it is retried after the others.\n\n**Before running:** open the **Config** node and fill in every `YOUR_...` placeholder, then create the two credentials named below (see README.md for full setup steps).\n\n**Settings:** everything is in the **Config** node, except the daily time, which is in **Daily Schedule**.\n**Credentials needed:** \"Instagram Access Token (Header Auth)\" and a Gemini API credential — see README.md."
+      },
+      "id": "4c80750e-b2f9-4c8f-9bbe-320c5efc3058"
+    },
+    {
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -520,
+        160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 19,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "78462102-e4d7-4e1f-950f-16f993bae47e"
+    },
+    {
+      "name": "Test: Run Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        360
+      ],
+      "parameters": {},
+      "id": "d99a2735-cf93-4f68-99b1-2281c443f6eb"
+    },
+    {
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -300,
+        260
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7c79a4d3-89e5-44a1-adfa-a77ff5ba5096",
+              "name": "ROOT_DIR",
+              "value": "C:\\Instagram-Automation",
+              "type": "string"
+            },
+            {
+              "id": "b6dcfbdc-d57f-4f81-9b8f-701c1742abea",
+              "name": "IG_ACCOUNT_ID",
+              "value": "YOUR_INSTAGRAM_ACCOUNT_ID",
+              "type": "string"
+            },
+            {
+              "id": "08505ae2-cd7f-4d66-976f-9a9ae376596f",
+              "name": "GRAPH_HOST",
+              "value": "graph.instagram.com",
+              "type": "string"
+            },
+            {
+              "id": "6b309056-9a8b-4569-be14-f33485c1cedb",
+              "name": "GRAPH_VERSION",
+              "value": "v25.0",
+              "type": "string"
+            },
+            {
+              "id": "8581feb3-0b3f-4d14-aacc-2cf24665af6e",
+              "name": "SHARE_TO_FEED",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "e512b6cb-1a3d-4bbc-ba5b-da763509dbb1",
+              "name": "VIDEO_EXTENSIONS",
+              "value": ".mp4,.mov",
+              "type": "string"
+            },
+            {
+              "id": "d0e0cbe5-ff11-4f52-95a8-7c6c66675d95",
+              "name": "IMAGE_EXTENSIONS",
+              "value": ".jpg,.jpeg",
+              "type": "string"
+            },
+            {
+              "id": "3e39a7de-5311-4095-8a3f-70eec8386727",
+              "name": "MIN_FILE_AGE_SECONDS",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "55098e42-bf22-4856-acca-43409bda5d0c",
+              "name": "STATUS_CHECK_SECONDS",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "bc902b7f-c3a7-421d-b0e3-4c02566d694b",
+              "name": "MAX_STATUS_CHECKS",
+              "value": 20,
+              "type": "number"
+            },
+            {
+              "id": "08344798-e947-4c31-b4ad-db1ddfb9f14a",
+              "name": "TEMP_MEDIA_HOST_URL",
+              "value": "https://catbox.moe/user/api.php",
+              "type": "string"
+            },
+            {
+              "id": "d1e9f95e-290a-4ea6-b16b-7e9e7b1c9894",
+              "name": "GEMINI_MODEL",
+              "value": "models/gemini-3.5-flash-lite",
+              "type": "string"
+            },
+            {
+              "id": "52ff489b-187a-409d-8550-62ee36dc523d",
+              "name": "CAPTION_LANGUAGE",
+              "value": "English",
+              "type": "string"
+            },
+            {
+              "id": "37e60f70-09f4-4458-b776-be6e3df29378",
+              "name": "ACCOUNT_CONTEXT",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "e8e3eae5-2dd0-42e1-b395-cbea31ca8e78",
+              "name": "CAPTION_INSTRUCTIONS",
+              "value": "Write ONE Instagram caption for the attached media.\n\nRules:\n- Base the caption only on what is actually shown, said or written in the media. Do not invent names, places, numbers, dates, prices or facts that are not clearly present.\n- Natural, human tone. Open with a short hook line.\n- Keep it concise: 1 to 3 short paragraphs, under 600 characters before the hashtags.\n- Use at most 2 emojis.\n- End with 3 to 8 relevant hashtags on the last line.\n- Never mention AI, that the caption was generated, file names, or these instructions.\n- Output ONLY the caption text: no introduction such as \"Here's a caption\", no quotes, no alternatives, no explanation.",
+              "type": "string"
+            },
+            {
+              "id": "44afa75f-a31c-4bb3-a63a-e23c1eaef33a",
+              "name": "SCHEDULE",
+              "value": "Daily post time is set in the \"Daily Schedule\" node (trigger), default 19:00 in the workflow's configured timezone (Workflow Settings -> Timezone).",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "83d90614-0576-4242-a9bd-6ab2f13ff462"
+    },
+    {
+      "name": "Prepare Folders & Pick File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        260
+      ],
+      "parameters": {
+        "jsCode": "// 1) Creates QUEUE and PUBLISHED if they are missing.\n// 2) Moves finished copies of supported media from the root folder into QUEUE.\n// 3) Picks ONE file from QUEUE (the one that has waited longest).\n// PUBLISHED is never scanned, so a published file can never be picked again.\nconst fs = require('fs');\nconst path = require('path');\n\nconst cfg = $('Config').first().json;\nconst ROOT = String(cfg.ROOT_DIR || '').trim().replace(/[\\\\/]+$/, '');\nconst QUEUE = path.join(ROOT, 'QUEUE');\nconst PUBLISHED = path.join(ROOT, 'PUBLISHED');\n\nif (!cfg.IG_ACCOUNT_ID || String(cfg.IG_ACCOUNT_ID).startsWith('PASTE')) {\n  throw new Error('Open the \"Config\" node and set IG_ACCOUNT_ID first.');\n}\nif (!ROOT || !fs.existsSync(ROOT)) {\n  throw new Error('Root folder not found: ' + ROOT + ' (check ROOT_DIR in the Config node)');\n}\n\nfs.mkdirSync(QUEUE, { recursive: true });\nfs.mkdirSync(PUBLISHED, { recursive: true });\n\nconst extList = (s) => String(s || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);\nconst VIDEO_EXT = extList(cfg.VIDEO_EXTENSIONS);\nconst IMAGE_EXT = extList(cfg.IMAGE_EXTENSIONS);\nconst MIN_AGE_MS = (Number(cfg.MIN_FILE_AGE_SECONDS) || 60) * 1000;\n\nconst kindOf = (name) => {\n  const ext = path.extname(name).toLowerCase();\n  if (VIDEO_EXT.includes(ext)) return 'video';\n  if (IMAGE_EXT.includes(ext)) return 'image';\n  return null;\n};\n\n// \"clip.mp4\" -> \"clip (2).mp4\" if the name is already taken\nconst freeName = (dir, name) => {\n  const p = path.parse(name);\n  let candidate = name;\n  let i = 1;\n  while (fs.existsSync(path.join(dir, candidate))) candidate = p.name + ' (' + (++i) + ')' + p.ext;\n  return candidate;\n};\n\n// ---- 1) root folder -> QUEUE ----\nconst movedIntoQueue = [];\nconst stillCopying = [];\nconst ignoredInRoot = [];\n\nfor (const ent of fs.readdirSync(ROOT, { withFileTypes: true })) {\n  if (!ent.isFile()) continue;\n  if (!kindOf(ent.name)) {\n    if (!/^desktop\\.ini$|^thumbs\\.db$/i.test(ent.name)) ignoredInRoot.push(ent.name);\n    continue;\n  }\n  const src = path.join(ROOT, ent.name);\n  let st;\n  try { st = fs.statSync(src); } catch (e) { continue; }\n\n  // Skip files that are empty or were written in the last MIN_FILE_AGE_SECONDS (copy still running)\n  if (st.size === 0 || Date.now() - st.mtimeMs < MIN_AGE_MS) { stillCopying.push(ent.name); continue; }\n\n  // { } would be read as a pattern by the file node, so replace them\n  const destName = freeName(QUEUE, ent.name.replace(/[{}]/g, '-'));\n  const dest = path.join(QUEUE, destName);\n  try {\n    fs.renameSync(src, dest);\n    const now = new Date();\n    fs.utimesSync(dest, now, now); // queue order = order files arrived in QUEUE\n    movedIntoQueue.push(destName);\n  } catch (e) {\n    stillCopying.push(ent.name); // locked by Windows (still copying) -> next run\n  }\n}\n\n// ---- 2) pick one file from QUEUE ----\nconst queue = [];\nfor (const ent of fs.readdirSync(QUEUE, { withFileTypes: true })) {\n  if (!ent.isFile()) continue;\n  const kind = kindOf(ent.name);\n  if (!kind) continue;\n  const filePath = path.join(QUEUE, ent.name);\n  try {\n    const st = fs.statSync(filePath);\n    if (st.size > 0) queue.push({ name: ent.name, filePath, size: st.size, mtimeMs: st.mtimeMs, kind });\n  } catch (e) { /* file vanished */ }\n}\n\nif (!queue.length) {\n  // Nothing to publish: the run ends here without error.\n  return [];\n}\n\nqueue.sort((a, b) => a.mtimeMs - b.mtimeMs || a.name.localeCompare(b.name));\nconst pick = queue[0];\n\n// Put the picked file at the back of the line. If this run fails, the next run\n// tries a different file first instead of getting stuck on a bad one.\ntry { const now = new Date(); fs.utimesSync(pick.filePath, now, now); } catch (e) { /* not critical */ }\n\nreturn [{\n  json: {\n    fileName: pick.name,\n    filePath: pick.filePath,\n    fileSize: pick.size,\n    mediaKind: pick.kind,\n    queueLength: queue.length,\n    movedIntoQueue,\n    stillCopying,\n    ignoredInRoot,\n  },\n}];\n"
+      },
+      "id": "74d04d77-bec4-4b1c-901a-7b878d5f1eb5"
+    },
+    {
+      "name": "Read Media File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        140,
+        260
+      ],
+      "parameters": {
+        "fileSelector": "={{ $json.filePath }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "id": "6ac2b7f2-d8c9-456d-8f0b-00d51de5720b"
+    },
+    {
+      "name": "Video or Photo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        360,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "775f718b-995c-49cd-b0c9-b05af25c9f6a",
+              "leftValue": "={{ $('Prepare Folders & Pick File').first().json.mediaKind }}",
+              "rightValue": "video",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5225a6e4-fa4b-4d56-b1a2-9b0e8169de44"
+    },
+    {
+      "name": "Gemini: Caption Video",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        580,
+        160
+      ],
+      "parameters": {
+        "resource": "video",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.GEMINI_MODEL }}"
+        },
+        "text": "=The attached file is a video (watch it and listen to it).\n\n{{ $('Config').first().json.CAPTION_INSTRUCTIONS }}\n\nWrite the caption in {{ $('Config').first().json.CAPTION_LANGUAGE }}.\n{{ $('Config').first().json.ACCOUNT_CONTEXT ? 'About this Instagram account (for tone only, not for facts): ' + $('Config').first().json.ACCOUNT_CONTEXT : '' }}",
+        "inputType": "binary",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "Gemini API Credential"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "id": "aee07c90-95a7-45a4-95ce-c6575d0ca933"
+    },
+    {
+      "name": "Gemini: Caption Photo",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        580,
+        360
+      ],
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.GEMINI_MODEL }}"
+        },
+        "text": "=The attached file is a photo.\n\n{{ $('Config').first().json.CAPTION_INSTRUCTIONS }}\n\nWrite the caption in {{ $('Config').first().json.CAPTION_LANGUAGE }}.\n{{ $('Config').first().json.ACCOUNT_CONTEXT ? 'About this Instagram account (for tone only, not for facts): ' + $('Config').first().json.ACCOUNT_CONTEXT : '' }}",
+        "inputType": "binary",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "Gemini API Credential"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "id": "5372054b-17e6-4e67-84aa-5afed4b1dbee"
+    },
+    {
+      "name": "Clean Caption",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        800,
+        260
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0b12e6fb-f787-427b-acd1-b8d6ff507742",
+              "name": "caption",
+              "type": "string",
+              "value": "={{ String(($json.content && $json.content.parts) ? $json.content.parts.map(p => p.text || '').join('') : ($json.text || '')).replace(/^\\s*(sure|okay|ok|certainly|here(?:'|’)?s|here is)[^\\n]*\\n+/i, '').replace(/^[\\s\"“”']+|[\\s\"“”']+$/g, '').slice(0, 2200) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b443ea92-eadd-4542-a51e-c147fc69c19f"
+    },
+    {
+      "name": "Read Media for Upload",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1020,
+        260
+      ],
+      "parameters": {
+        "fileSelector": "={{ $('Prepare Folders & Pick File').first().json.filePath }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "id": "07fdf211-06ce-4bbb-8650-fdecc6514ab8"
+    },
+    {
+      "name": "Upload Media to Temp Public Link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.TEMP_MEDIA_HOST_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "curl/8.7.1"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "reqtype",
+              "value": "fileupload"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "fileToUpload",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "publicUrl"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "b251a8d2-318c-439d-86a1-c53963185b33"
+    },
+    {
+      "name": "Build Public Media URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1350,
+        260
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3721ed32-3837-4d39-963d-c56f42f5857f",
+              "name": "publicUrl",
+              "type": "string",
+              "value": "={{ String($json.publicUrl).trim() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ce0c8329-560c-4450-8d07-cd4741d833ca"
+    },
+    {
+      "name": "Video or Photo? (publish)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1460,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b65c79fe-d579-425b-a98f-901c6827567e",
+              "leftValue": "={{ $('Prepare Folders & Pick File').first().json.mediaKind }}",
+              "rightValue": "video",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0c399f01-34ed-407b-a642-37b551eda700"
+    },
+    {
+      "name": "Create Reel Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://' + $('Config').first().json.GRAPH_HOST + '/' + $('Config').first().json.GRAPH_VERSION + '/' + $('Config').first().json.IG_ACCOUNT_ID + '/media' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "REELS"
+            },
+            {
+              "name": "video_url",
+              "value": "={{ String($json.publicUrl).trim() }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Clean Caption').first().json.caption }}"
+            },
+            {
+              "name": "share_to_feed",
+              "value": "={{ String($('Config').first().json.SHARE_TO_FEED) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": null,
+          "name": "Instagram Access Token (Header Auth)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "26dbd18e-4256-46f3-99e8-7f90406c318e"
+    },
+    {
+      "name": "Create Photo Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        380
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://' + $('Config').first().json.GRAPH_HOST + '/' + $('Config').first().json.GRAPH_VERSION + '/' + $('Config').first().json.IG_ACCOUNT_ID + '/media' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "image_url",
+              "value": "={{ String($json.publicUrl).trim() }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Clean Caption').first().json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": null,
+          "name": "Instagram Access Token (Header Auth)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "de0a16c1-a2d6-4428-9780-abd1a7993314"
+    },
+    {
+      "name": "Wait for Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1900,
+        260
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $('Config').first().json.STATUS_CHECK_SECONDS }}",
+        "unit": "seconds"
+      },
+      "webhookId": "75a549dd-cf9b-490e-bc54-e88cbfb47cfe",
+      "id": "a7222b9c-5484-4a90-96fa-d01a698fab34"
+    },
+    {
+      "name": "Check Container Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2120,
+        260
+      ],
+      "parameters": {
+        "url": "={{ 'https://' + $('Config').first().json.GRAPH_HOST + '/' + $('Config').first().json.GRAPH_VERSION + '/' + ($('Create Reel Container').isExecuted ? $('Create Reel Container').first().json.id : $('Create Photo Container').first().json.id) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,status_code,status"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": null,
+          "name": "Instagram Access Token (Header Auth)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "984eaea1-c195-497f-852e-be96b6098fd7"
+    },
+    {
+      "name": "Ready?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2340,
+        260
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "fee487a7-6787-4072-ac6a-dfc06e5bead8",
+                    "leftValue": "={{ $json.status_code }}",
+                    "rightValue": "FINISHED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ready"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0a97d698-a01c-41ea-96de-2f137cfddc92",
+                    "leftValue": "={{ $json.status_code }}",
+                    "rightValue": "IN_PROGRESS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "65571879-dd64-4439-af7d-3b9ec0bd27be",
+                    "leftValue": "={{ $runIndex + 1 }}",
+                    "rightValue": "={{ $('Config').first().json.MAX_STATUS_CHECKS }}",
+                    "operator": {
+                      "type": "number",
+                      "operation": "lt"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Still processing"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Failed"
+        }
+      },
+      "id": "66e3139d-e698-4130-a884-56df020618c6"
+    },
+    {
+      "name": "Publish to Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2560,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://' + $('Config').first().json.GRAPH_HOST + '/' + $('Config').first().json.GRAPH_VERSION + '/' + $('Config').first().json.IG_ACCOUNT_ID + '/media_publish' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": null,
+          "name": "Instagram Access Token (Header Auth)"
+        }
+      },
+      "id": "1b995560-1245-4be1-ab61-2880c58f1fec"
+    },
+    {
+      "name": "Move File to PUBLISHED",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2780,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// Runs only after \"Publish to Instagram\" succeeded.\n// Instagram returns the new media id only when the post is live; without it nothing is moved.\nconst fs = require('fs');\nconst path = require('path');\n\nconst cfg = $('Config').first().json;\nconst pick = $('Prepare Folders & Pick File').first().json;\nconst mediaId = $input.first().json.id;\n\nif (!mediaId) {\n  throw new Error('Instagram did not return a media id, so the post is not confirmed. \"' + pick.fileName + '\" stays in QUEUE.');\n}\n\nconst ROOT = String(cfg.ROOT_DIR || '').trim().replace(/[\\\\/]+$/, '');\nconst PUBLISHED = path.join(ROOT, 'PUBLISHED');\nfs.mkdirSync(PUBLISHED, { recursive: true });\n\nconst p = path.parse(pick.fileName);\nlet destName = pick.fileName;\nlet i = 1;\nwhile (fs.existsSync(path.join(PUBLISHED, destName))) destName = p.name + ' (' + (++i) + ')' + p.ext;\nconst dest = path.join(PUBLISHED, destName);\n\n// Windows can hold a short lock on a file that was just read, so try a few times.\nconst sleep = (ms) => new Promise((resolve) => (typeof setTimeout === 'function' ? setTimeout(resolve, ms) : resolve()));\nlet lastError = null;\nfor (let attempt = 1; attempt <= 5; attempt++) {\n  try { fs.renameSync(pick.filePath, dest); lastError = null; break; } catch (e) { lastError = e; await sleep(2000); }\n}\nif (lastError) {\n  throw new Error('POSTED on Instagram (media id ' + mediaId + ') but could not move \"' + pick.fileName +\n    '\" to PUBLISHED: ' + lastError.message + '. Move it into PUBLISHED by hand so it is not posted again.');\n}\n\nreturn [{\n  json: {\n    status: 'published',\n    instagramMediaId: mediaId,\n    fileName: pick.fileName,\n    movedTo: dest,\n    caption: $('Clean Caption').first().json.caption,\n  },\n}];\n"
+      },
+      "id": "4c8845e9-a8a8-4db4-b7fe-3eb31e99727f"
+    },
+    {
+      "name": "Instagram Rejected Media",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2560,
+        380
+      ],
+      "parameters": {
+        "errorMessage": "={{ 'Instagram could not process \"' + $('Prepare Folders & Pick File').first().json.fileName + '\": status ' + ($json.status_code || 'unknown') + (($json.status_code === 'IN_PROGRESS') ? ' (timed out)' : '') + '. ' + ($json.status || '') + ' The file stays in QUEUE.' }}"
+      },
+      "id": "4dc438b3-fe40-458a-a93c-348e31c3c9e9"
+    }
+  ],
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test: Run Now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Prepare Folders & Pick File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Folders & Pick File": {
+      "main": [
+        [
+          {
+            "node": "Read Media File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Media File": {
+      "main": [
+        [
+          {
+            "node": "Video or Photo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video or Photo?": {
+      "main": [
+        [
+          {
+            "node": "Gemini: Caption Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gemini: Caption Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini: Caption Video": {
+      "main": [
+        [
+          {
+            "node": "Clean Caption",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini: Caption Photo": {
+      "main": [
+        [
+          {
+            "node": "Clean Caption",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Caption": {
+      "main": [
+        [
+          {
+            "node": "Read Media for Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Media for Upload": {
+      "main": [
+        [
+          {
+            "node": "Upload Media to Temp Public Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Media to Temp Public Link": {
+      "main": [
+        [
+          {
+            "node": "Build Public Media URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Public Media URL": {
+      "main": [
+        [
+          {
+            "node": "Video or Photo? (publish)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video or Photo? (publish)": {
+      "main": [
+        [
+          {
+            "node": "Create Reel Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Photo Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Reel Container": {
+      "main": [
+        [
+          {
+            "node": "Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Photo Container": {
+      "main": [
+        [
+          {
+            "node": "Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Processing": {
+      "main": [
+        [
+          {
+            "node": "Check Container Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Container Status": {
+      "main": [
+        [
+          {
+            "node": "Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready?": {
+      "main": [
+        [
+          {
+            "node": "Publish to Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Instagram Rejected Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to Instagram": {
+      "main": [
+        [
+          {
+            "node": "Move File to PUBLISHED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC",
+    "saveManualExecutions": true
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

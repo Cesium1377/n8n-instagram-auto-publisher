@@ -1,0 +1,36 @@
+# Secrets / local environment
+.env
+.env.local
+*.env
+
+# n8n local data (if you keep a local n8n install alongside this repo)
+.n8n/
+n8n-data/
+data/.n8n/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local media queue/output (never commit real photos/videos or their working folders)
+Instagram-Automation/
+QUEUE/
+PUBLISHED/
+*.mp4
+*.mov
+*.jpg
+*.jpeg
+*.png
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Node (only relevant if you add tooling/scripts later)
+node_modules/
+npm-debug.log*
